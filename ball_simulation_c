@@ -1,0 +1,159 @@
+/*
+ * 프로젝트명: 중력과 질량 시뮬레이션 (C언어)
+ * 작성자: 금호석 (2026.01.11)
+ *
+ * [핵심 구현 내용]
+ * 1. 구조체(struct Ball)를 사용해 공의 위치, 속도, 질량을 관리함.
+ * 2. 운동량 보존 법칙을 응용하여 질량에 따른 리얼한 충돌 반응 구현.
+ * 3. 공끼리 겹치는 버그(Sinking)를 해결하기 위해 '위치 보정 로직'을 직접 설계함.
+ *
+ * [개발 과정에서의 고민 / 해결]
+ * - 문제: 처음에는 공들이 충돌할 때 서로 들러붙는 현상이 발생함.
+ * - 해결: 겹친 깊이(overlap)를 계산하고, 질량이 무거운 쪽은 덜 밀려나도록 비율(ratio)을 계산해서 수정함.
+ * - 의도: 중력 가속도에 질량을 곱한 것은, 공기 저항이 있는 환경에서 무게감을 시각적으로 강조하기 위함임.
+ */
+
+#include <stdio.h>
+#include <windows.h>
+#include <stdlib.h>
+#include <time.h>
+#include <math.h>
+
+#define WIDTH 100
+#define HEIGHT 20
+#define FPS 30
+#define FRAME_TIME (1000 / FPS)
+
+typedef struct {
+    float x, y;
+    float vx, vy;
+    float mass;
+} Ball;
+
+void gotoxy(int x, int y) {
+    COORD c = { (SHORT)x, (SHORT)y };
+    SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), c);
+}
+
+void hideCursor(void) {
+    CONSOLE_CURSOR_INFO info = { 1, FALSE };
+    SetConsoleCursorInfo(GetStdHandle(STD_OUTPUT_HANDLE), &info);
+}
+
+const float GRAVITY = 0.3f;
+const float DAMPING = 0.8f;
+const float RADIUS = 0.5f;
+
+int main(void) {
+    int n = 50;
+    Ball* balls;
+    static char screen[HEIGHT][WIDTH];
+
+    srand((unsigned int)time(NULL));
+    hideCursor();
+
+    balls = (Ball*)malloc(sizeof(Ball) * n);
+    if (!balls) return 1;
+
+    for (int i = 0; i < n; i++) {
+        balls[i].x = rand() % WIDTH;
+        balls[i].y = rand() % (HEIGHT / 2);
+        balls[i].vx = ((rand() % 200) - 100) / 200.0f;
+        balls[i].vy = 0.0f;
+        balls[i].mass = 0.5f + (rand() % 100) / 50.0f;
+    }
+
+    while (1) {
+
+        if (GetAsyncKeyState(VK_ESCAPE) & 0x8000)
+            break;
+
+        for (int y = 0; y < HEIGHT; y++)
+            for (int x = 0; x < WIDTH; x++)
+                screen[y][x] = ' ';
+
+        for (int i = 0; i < n; i++) {
+            Ball* b = &balls[i];
+
+            b->vy += GRAVITY * b->mass;
+            b->x += b->vx;
+            b->y += b->vy;
+
+            if (b->x < 0) {
+                b->x = 0;
+                b->vx = -b->vx * DAMPING / b->mass;
+            }
+            if (b->x >= WIDTH - 1) {
+                b->x = WIDTH - 1;
+                b->vx = -b->vx * DAMPING / b->mass;
+            }
+
+            if (b->y >= HEIGHT - 1) {
+                b->y = HEIGHT - 1;
+                b->vy = -b->vy * DAMPING / b->mass;
+            }
+        }
+
+        for (int i = 0; i < n; i++) {
+            for (int j = i + 1; j < n; j++) {
+
+                float dx = balls[j].x - balls[i].x;
+                float dy = balls[j].y - balls[i].y;
+                float dist = sqrtf(dx * dx + dy * dy);
+                float minDist = RADIUS * 2.0f;
+
+                if (dist > 0.0f && dist < minDist) {
+
+                    float overlap = minDist - dist;
+                    float nx = dx / dist;
+                    float ny = dy / dist;
+
+                    float totalMass = balls[i].mass + balls[j].mass;
+                    float ratio1 = balls[j].mass / totalMass;
+                    float ratio2 = balls[i].mass / totalMass;
+
+                    balls[i].x -= nx * overlap * ratio1;
+                    balls[i].y -= ny * overlap * ratio1;
+                    balls[j].x += nx * overlap * ratio2;
+                    balls[j].y += ny * overlap * ratio2;
+
+                    float rvx = balls[j].vx - balls[i].vx;
+                    float rvy = balls[j].vy - balls[i].vy;
+
+                    float velAlongNormal = rvx * nx + rvy * ny;
+                    if (velAlongNormal > 0) continue;
+
+                    float impulse = (2.0f * velAlongNormal) / totalMass;
+
+                    balls[i].vx += impulse * balls[j].mass * nx;
+                    balls[i].vy += impulse * balls[j].mass * ny;
+                    balls[j].vx -= impulse * balls[i].mass * nx;
+                    balls[j].vy -= impulse * balls[i].mass * ny;
+                }
+            }
+        }
+
+        for (int i = 0; i < n; i++) {
+            int ix = (int)balls[i].x;
+            int iy = (int)balls[i].y;
+
+            if (ix >= 0 && ix < WIDTH && iy >= 0 && iy < HEIGHT) {
+                char c = (balls[i].mass < 1.0f) ? '.' :
+                    (balls[i].mass < 1.8f) ? 'o' : 'O';
+                screen[iy][ix] = c;
+            }
+        }
+
+        gotoxy(0, 0);
+        for (int y = 0; y < HEIGHT; y++) {
+            for (int x = 0; x < WIDTH; x++)
+                putchar(screen[y][x]);
+            putchar('\n');
+        }
+
+        Sleep(FRAME_TIME);
+    }
+
+    free(balls);
+    return 0;
+}

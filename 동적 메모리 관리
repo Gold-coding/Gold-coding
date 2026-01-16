@@ -1,0 +1,131 @@
+#include <iostream>
+#include <cstdlib>
+#include <vector>
+#include <cstdint>
+#include <bit>
+#include <new>
+
+using namespace std;
+
+struct Ball {
+    float x, y;
+    float vx, vy;
+    float mass;
+
+    Ball() : x(0), y(0), vx(0), vy(0), mass(1.0f) {}
+    ~Ball() {}
+};
+
+class MemoryPool {
+private:
+    vector<uint32_t> bitmap;
+    Ball* memory;
+    int current_capacity;
+
+    void expand_memory() {
+        int old_capacity = current_capacity;
+        current_capacity += 32;
+
+        Ball* new_memory = static_cast<Ball*>(
+            realloc(memory, sizeof(Ball) * current_capacity)
+            );
+        if (!new_memory) exit(1);
+
+        memory = new_memory;
+        bitmap.resize((current_capacity + 31) / 32, 0);
+
+        cout << ">> Memory Expanded: " << old_capacity << " -> " << current_capacity << endl;
+    }
+
+public:
+    MemoryPool(int initial_cap = 32) : current_capacity(initial_cap) {
+        memory = static_cast<Ball*>(malloc(sizeof(Ball) * current_capacity));
+        if (!memory) exit(1);
+        bitmap.assign((current_capacity + 31) / 32, 0);
+    }
+
+    ~MemoryPool() {
+        if (memory) {
+            for (int i = 0; i < current_capacity; ++i) {
+                int block = i / 32;
+                int bit = i % 32;
+                if (bitmap[block] & (1u << bit)) {
+                    memory[i].~Ball();
+                }
+            }
+            free(memory);
+            cout << ">> Memory Pool Released." << endl;
+        }
+    }
+
+    int allocate_index() {
+        for (size_t block = 0; block < bitmap.size(); ++block) {
+            if (bitmap[block] != 0xFFFFFFFFu) {
+                int bit = std::countr_zero(~bitmap[block]);
+                int index = static_cast<int>(block * 32 + bit);
+
+                if (index >= current_capacity) break;
+
+                bitmap[block] |= (1u << bit);
+                new (&memory[index]) Ball();
+                return index;
+            }
+        }
+        expand_memory();
+        return allocate_index();
+    }
+
+    void deallocate_index(int index) {
+        if (index < 0 || index >= current_capacity) return;
+
+        int block = index / 32;
+        int bit = index % 32;
+
+        if (!(bitmap[block] & (1u << bit))) {
+            cout << "[Warning] Index " << index << " is already free." << endl;
+            return;
+        }
+
+        memory[index].~Ball();
+        bitmap[block] &= ~(1u << bit);
+        cout << ">> Index " << index << " deallocated." << endl;
+    }
+
+    Ball* get_ball(int index) {
+        if (index < 0 || index >= current_capacity) return nullptr;
+        int block = index / 32;
+        int bit = index % 32;
+        if (!(bitmap[block] & (1u << bit))) return nullptr;
+        return &memory[index];
+    }
+
+    void print_bitmap() {
+        cout << "Bitmap: ";
+        for (int b = static_cast<int>(bitmap.size()) - 1; b >= 0; --b) {
+            for (int i = 31; i >= 0; --i) {
+                cout << ((bitmap[b] >> i) & 1);
+            }
+        }
+        cout << endl;
+    }
+};
+
+int main() {
+    MemoryPool pool(32);
+
+    int id1 = pool.allocate_index();
+    int id2 = pool.allocate_index();
+
+    cout << "Allocated IDs: " << id1 << ", " << id2 << endl;
+    pool.print_bitmap();
+
+    pool.deallocate_index(id1);
+    pool.print_bitmap();
+
+    pool.deallocate_index(id1);
+
+    pool.deallocate_index(id2);
+    pool.print_bitmap();
+
+    return 0;
+}

@@ -1,0 +1,181 @@
+#include <iostream>
+#include <vector>
+#include <cstdint>
+#include <random>
+#include <cmath>
+
+using namespace std;
+
+static constexpr int32_t FP = 8;
+static constexpr int32_t FP_ONE = 1 << FP;
+static constexpr int32_t GRAVITY = 2509;
+static constexpr int32_t CELL = 32 << FP;
+
+struct Ball {
+    int32_t x, y;
+    int32_t vx, vy;
+    int32_t radius;
+    int32_t mass;
+
+    Ball() : x(0), y(0), vx(0), vy(0), radius(5 << FP), mass(1 << FP) {}
+
+    void update(int32_t dt) {
+        vy += (GRAVITY * dt) >> FP;
+        x += (vx * dt) >> FP;
+        y += (vy * dt) >> FP;
+    }
+
+    void resolveWall(int32_t w, int32_t h) {
+        if (x < radius) { x = radius; if (vx < 0) vx = -vx; }
+        if (x > w - radius) { x = w - radius; if (vx > 0) vx = -vx; }
+        if (y < radius) { y = radius; if (vy < 0) vy = -vy; }
+        if (y > h - radius) { y = h - radius; if (vy > 0) vy = -vy; }
+    }
+};
+
+template<size_t N>
+class BitPool {
+    alignas(Ball) uint8_t buffer[N * sizeof(Ball)];
+    uint64_t used[(N + 63) >> 6]{};
+
+public:
+    Ball* allocate() {
+        for (size_t w = 0; w < (N + 63) / 64; ++w) {
+            uint64_t m = ~used[w];
+            if (m) {
+                unsigned b = __builtin_ctzll(m);
+                size_t i = (w << 6) + b;
+                if (i >= N) return nullptr;
+                used[w] |= (1ULL << b);
+                return new (buffer + i * sizeof(Ball)) Ball();
+            }
+        }
+        return nullptr;
+    }
+
+    void deallocate(Ball* obj) {
+        uintptr_t base = reinterpret_cast<uintptr_t>(buffer);
+        uintptr_t ptr = reinterpret_cast<uintptr_t>(obj);
+        size_t i = (ptr - base) / sizeof(Ball);
+        obj->~Ball();
+        used[i >> 6] &= ~(1ULL << (i & 63));
+    }
+};
+
+struct Grid {
+    int cols, rows;
+    vector<vector<Ball*>> cells;
+
+    Grid(int w, int h) {
+        cols = (w + CELL - 1) / CELL;
+        rows = (h + CELL - 1) / CELL;
+        cells.resize(cols * rows);
+    }
+
+    void clear() {
+        for (auto& c : cells) c.clear();
+    }
+
+    void insert(Ball* b) {
+        int cx = b->x / CELL;
+        int cy = b->y / CELL;
+        if (cx < 0 || cy < 0 || cx >= cols || cy >= rows) return;
+        cells[cy * cols + cx].push_back(b);
+    }
+
+    static void resolvePair(Ball* a, Ball* b) {
+        int32_t dx = b->x - a->x;
+        int32_t dy = b->y - a->y;
+        int64_t dist2 = (int64_t)dx * dx + (int64_t)dy * dy;
+        int32_t r = a->radius + b->radius;
+        if (dist2 == 0 || dist2 > (int64_t)r * r) return;
+
+        double dist = sqrt((double)dist2);
+        double nx = dx / dist;
+        double ny = dy / dist;
+        double penetration = r - dist;
+        a->x -= int32_t(nx * penetration / 2.0);
+        a->y -= int32_t(ny * penetration / 2.0);
+        b->x += int32_t(nx * penetration / 2.0);
+        b->y += int32_t(ny * penetration / 2.0);
+
+        double dvx = b->vx - a->vx;
+        double dvy = b->vy - a->vy;
+        double vn = dvx * nx + dvy * ny;
+        if (vn > 0) return;
+
+        double m1 = a->mass;
+        double m2 = b->mass;
+        double impulse = (-(1.0 + 1.0) * vn) / (1.0 / m1 + 1.0 / m2);
+        double ix = impulse * nx;
+        double iy = impulse * ny;
+        a->vx -= int32_t(ix);
+        a->vy -= int32_t(iy);
+        b->vx += int32_t(ix);
+        b->vy += int32_t(iy);
+    }
+
+    void resolveCollisions() {
+        for (int y = 0; y < rows; ++y) {
+            for (int x = 0; x < cols; ++x) {
+                auto& cell = cells[y * cols + x];
+                for (size_t i = 0; i < cell.size(); ++i)
+                    for (size_t j = i + 1; j < cell.size(); ++j)
+                        resolvePair(cell[i], cell[j]);
+
+                const int dx[4] = { 1, 0, 1, -1 };
+                const int dy[4] = { 0, 1, 1, 1 };
+                for (int d = 0; d < 4; ++d) {
+                    int nx = x + dx[d];
+                    int ny = y + dy[d];
+                    if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+                    auto& other = cells[ny * cols + nx];
+                    for (auto* a : cell)
+                        for (auto* b : other)
+                            resolvePair(a, b);
+                }
+            }
+        }
+    }
+};
+
+int main() {
+    constexpr int32_t W = 800 << FP;
+    constexpr int32_t H = 600 << FP;
+    constexpr int32_t DT = 4;
+
+    random_device rd;
+    mt19937 gen(rd());
+    uniform_int_distribution<int> posX(0, 799);
+    uniform_int_distribution<int> posY(0, 599);
+    uniform_int_distribution<int> vel(-100, 99);
+
+    BitPool<1024> pool;
+    vector<Ball*> balls;
+    Grid grid(W, H);
+
+    for (int i = 0; i < 1000; ++i) {
+        Ball* b = pool.allocate();
+        if (!b) break;
+        b->x = posX(gen) << FP;
+        b->y = posY(gen) << FP;
+        b->vx = vel(gen) << 4;
+        b->vy = vel(gen) << 4;
+        balls.push_back(b);
+    }
+
+    for (int step = 0; step < 600; ++step) {
+        grid.clear();
+        for (auto* b : balls) {
+            b->update(DT);
+            b->resolveWall(W, H);
+            grid.insert(b);
+        }
+        grid.resolveCollisions();
+    }
+
+    for (auto* b : balls)
+        pool.deallocate(b);
+
+    return 0;
+}

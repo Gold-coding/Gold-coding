@@ -1,0 +1,49 @@
+#include <iostream>
+#include <vector>
+#include <string>
+#include <cmath>
+#include <algorithm>
+#include <map>
+
+struct Item {
+    std::string name;
+    std::vector<double> features;
+};
+
+double calculateSimilarity(const std::vector<double>& a, const std::vector<double>& b) {
+    double dotProduct = 0.0, normA = 0.0, normB = 0.0;
+    for (size_t i = 0; i < a.size(); ++i) {
+        dotProduct += a[i] * b[i];
+        normA += a[i] * a[i];
+        normB += b[i] * b[i];
+    }
+    return (normA == 0 || normB == 0) ? 0 : dotProduct / (sqrt(normA) * sqrt(normB));
+}
+
+int main() {
+    std::vector<Item> database = {
+        {"Action Movie A", {1.0, 0.9, 0.1, 0.0}},
+        {"Action Movie B", {0.9, 1.0, 0.2, 0.1}},
+        {"Romance Movie C", {0.1, 0.2, 0.9, 1.0}},
+        {"Sci-Fi Movie D", {0.8, 0.7, 0.5, 0.2}}
+    };
+
+    Item newUserPreference = {"User_Interest", {0.95, 0.85, 0.0, 0.0}};
+
+    std::vector<std::pair<double, std::string>> recommendations;
+
+    for (const auto& item : database) {
+        double score = calculateSimilarity(newUserPreference.features, item.features);
+        recommendations.push_back({score, item.name});
+    }
+
+    std::sort(recommendations.rbegin(), recommendations.rend());
+
+    std::cout << "Recommendations for new user:" << std::endl;
+    for (int i = 0; i < 2; ++i) {
+        std::cout << i + 1 << ". " << recommendations[i].second 
+                  << " (Score: " << recommendations[i].first << ")" << std::endl;
+    }
+
+    return 0;
+}

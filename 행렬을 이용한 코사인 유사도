@@ -1,0 +1,29 @@
+#include <vector>
+#include <numeric>
+#include <cmath>
+#include <stdexcept>
+#include <iostream>
+
+template<typename T>
+double cosine_similarity(const std::vector<T>& a, const std::vector<T>& b)
+{
+    if (a.size() != b.size())
+        throw std::invalid_argument("Vectors must have the same dimension.");
+
+    double dot = std::inner_product(a.begin(), a.end(), b.begin(), 0.0);
+    double norm_a = std::sqrt(std::inner_product(a.begin(), a.end(), a.begin(), 0.0));
+    double norm_b = std::sqrt(std::inner_product(b.begin(), b.end(), b.begin(), 0.0));
+
+    if (norm_a == 0.0 || norm_b == 0.0)
+        throw std::runtime_error("Zero vector detected.");
+
+    return dot / (norm_a * norm_b);
+}
+
+int main()
+{
+    std::vector<double> v1{1.0, 2.0, 3.0};
+    std::vector<double> v2{4.0, 5.0, 6.0};
+
+    std::cout << cosine_similarity(v1, v2) << std::endl;
+}

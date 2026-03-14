@@ -1,0 +1,44 @@
+#include <iostream>
+#include <vector>
+#include <cmath>
+
+using namespace std;
+
+int main() {
+    vector<double> X = {1, 2, 3, 4, 5};
+    vector<double> y = {2, 8, 18, 32, 50}; 
+
+    double w1 = 0.0;
+    double w2 = 0.0;
+    double b = 0.0;
+    double lr = 0.001;
+    int epochs = 10000;
+    int n = X.size();
+
+    for(int epoch = 0; epoch < epochs; epoch++) {
+        double dw1 = 0.0;
+        double dw2 = 0.0;
+        double db = 0.0;
+
+        for(int i = 0; i < n; i++) {
+            double x_pow2 = X[i] * X[i];
+            double y_pred = w1 * X[i] + w2 * x_pow2 + b;
+            
+            double diff = y_pred - y[i];
+            
+            dw1 += diff * X[i];
+            dw2 += diff * x_pow2;
+            db += diff;
+        }
+
+        w1 -= lr * (2.0 / n) * dw1;
+        w2 -= lr * (2.0 / n) * dw2;
+        b -= lr * (2.0 / n) * db;
+    }
+
+    cout << "w1: " << w1 << endl;
+    cout << "w2: " << w2 << endl;
+    cout << "b: " << b << endl;
+
+    return 0;
+}

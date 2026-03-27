@@ -1,0 +1,24 @@
+#include <iostream>
+#include <Eigen/Dense>
+#include <cmath>
+
+using namespace Eigen;
+
+MatrixXf cross_attention(const MatrixXf &Q, const MatrixXf &K, const MatrixXf &V) {
+    int d_k = K.cols();
+    MatrixXf scores = (Q * K.transpose()) / std::sqrt(d_k);
+    for (int i = 0; i < scores.rows(); ++i) {
+        float max_val = scores.row(i).maxCoeff();
+        VectorXf exp_row = (scores.row(i).array() - max_val).exp();
+        scores.row(i) = exp_row / exp_row.sum();
+    }
+    return scores * V;
+}
+
+int main() {
+    MatrixXf Q(2,4); MatrixXf K(3,4); MatrixXf V(3,4);
+    Q << 0.1,0.2,0.3,0.4, 0.5,0.6,0.7,0.8;
+    K << 0.2,0.1,0.4,0.3, 0.5,0.4,0.7,0.6, 0.8,0.7,0.2,0.1;
+    V << 0.1,0.3,0.5,0.7, 0.2,0.4,0.6,0.8, 0.9,0.7,0.5,0.3;
+    std::cout << cross_attention(Q,K,V) << std::endl;
+}

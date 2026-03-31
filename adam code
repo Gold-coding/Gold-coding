@@ -1,0 +1,115 @@
+#include <iostream>
+#include <vector>
+#include <cmath>
+#include <iomanip>
+#include <string>
+
+using namespace std;
+
+double loss(double x) { return x * x; }
+double grad(double x) { return 2 * x; }
+double safe_log(double x) { return log10(max(x, 1e-15)); }
+
+void printGraph(const vector<double>& sgd, const vector<double>& adam) {
+    int height = 30;
+
+    double min_val = 1e9, max_val = -1e9;
+
+    for (double v : sgd) {
+        double lv = safe_log(v);
+        min_val = min(min_val, lv);
+        max_val = max(max_val, lv);
+    }
+    for (double v : adam) {
+        double lv = safe_log(v);
+        min_val = min(min_val, lv);
+        max_val = max(max_val, lv);
+    }
+
+    cout << "\n=== Log Scale Loss Graph (SGD=* , Adam=+) ===\n\n";
+
+    for (int h = height; h >= 0; --h) {
+        double threshold = min_val + (max_val - min_val) * h / height;
+
+        cout << setw(8) << fixed << setprecision(2) << threshold << " | ";
+
+        for (int i = 0; i < sgd.size(); ++i) {
+            double s = safe_log(sgd[i]);
+            double a = safe_log(adam[i]);
+
+            bool printed = false;
+
+            if (fabs(s - threshold) < (max_val - min_val) / height) {
+                cout << "*";
+                printed = true;
+            }
+            else if (fabs(a - threshold) < (max_val - min_val) / height) {
+                cout << "+";
+                printed = true;
+            }
+
+            if (!printed) cout << " ";
+        }
+
+        cout << endl;
+    }
+
+    cout << "         " << string(sgd.size(), '-') << endl;
+    cout << "         0";
+    for (int i = 10; i < sgd.size(); i += 10)
+        cout << setw(10) << i;
+    cout << "\n";
+
+    cout << "\n* SGD (느림)  + Adam (빠름)\n";
+    cout << "★: 이벤트 마커\n";
+}
+
+int main() {
+    int epochs = 60;
+
+    double x_sgd = 10.0;
+    double x_adam = 10.0;
+
+    double lr_sgd = 0.01;
+    double lr_adam = 0.25;
+
+    double m_adam = 0, v_adam = 0;
+    double beta1 = 0.9;
+    double beta2 = 0.999;
+    double eps = 1e-8;
+
+    vector<double> sgd_loss, adam_loss;
+
+    for (int t = 1; t <= epochs; ++t) {
+
+        double g1 = grad(x_sgd);
+        x_sgd -= lr_sgd * g1;
+        double l1 = loss(x_sgd);
+        sgd_loss.push_back(l1);
+
+        double g2 = grad(x_adam);
+
+        m_adam = beta1 * m_adam + (1 - beta1) * g2;
+        v_adam = beta2 * v_adam + (1 - beta2) * g2 * g2;
+
+        double m_hat = m_adam / (1 - pow(beta1, t));
+        double v_hat = v_adam / (1 - pow(beta2, t));
+
+        x_adam -= lr_adam * m_hat / (sqrt(v_hat) + eps);
+        double l2 = loss(x_adam);
+        adam_loss.push_back(l2);
+
+        cout << "Epoch " << setw(2) << t
+             << " | SGD: " << scientific << l1
+             << " | Adam: " << scientific << l2;
+
+        if (l2 < 1e-10) cout << "  ★(1e-10)";
+        if (t == 5) cout << "  ★(stable)";
+
+        cout << endl;
+    }
+
+    printGraph(sgd_loss, adam_loss);
+
+    return 0;
+}

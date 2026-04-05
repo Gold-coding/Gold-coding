@@ -1,0 +1,138 @@
+#include <iostream>
+#include <vector>
+#include <random>
+#include <algorithm>
+#include <windows.h>
+#include <cmath>
+
+using namespace std;
+
+struct SimConfig {
+    int population = 1000;
+    int steps = 200;
+    int trials = 300;
+    double beta_base = 0.3;
+    double beta_mutation = 1.2;
+    double gamma = 0.1;
+    double vaccine_rate = 0.1;
+    int mutation_step = 60;
+    int vaccine_step = 120;
+    int contacts = 10;
+};
+
+void drawLine(vector<vector<char>>& canvas, int x0, int y0, int x1, int y1, char c) {
+    int dx = abs(x1 - x0), dy = abs(y1 - y0);
+    int sx = x0 < x1 ? 1 : -1;
+    int sy = y0 < y1 ? 1 : -1;
+    int err = dx - dy;
+    while (true) {
+        if (x0 >= 0 && x0 < (int)canvas[0].size() && y0 >= 0 && y0 < (int)canvas.size()) {
+            if (canvas[y0][x0] == ' ') canvas[y0][x0] = c;
+        }
+        if (x0 == x1 && y0 == y1) break;
+        int e2 = 2 * err;
+        if (e2 > -dy) { err -= dy; x0 += sx; }
+        if (e2 < dx) { err += dx; y0 += sy; }
+    }
+}
+
+void renderCanvas(const vector<vector<char>>& canvas, HANDLE hConsole) {
+    for (const auto& row : canvas) {
+        for (char c : row) {
+            if (c == 'S') SetConsoleTextAttribute(hConsole, 9);
+            else if (c == 'I') SetConsoleTextAttribute(hConsole, 12);
+            else if (c == 'R') SetConsoleTextAttribute(hConsole, 10);
+            else if (c == 'M') SetConsoleTextAttribute(hConsole, 13);
+            else if (c == 'V') SetConsoleTextAttribute(hConsole, 14);
+            else SetConsoleTextAttribute(hConsole, 7);
+            cout << c;
+        }
+        cout << "\n";
+    }
+    SetConsoleTextAttribute(hConsole, 7);
+}
+
+int main() {
+    SimConfig cfg;
+    vector<double> S_avg(cfg.steps + 1, 0.0);
+    vector<double> I_avg(cfg.steps + 1, 0.0);
+    vector<double> R_avg(cfg.steps + 1, 0.0);
+
+    random_device rd;
+    mt19937 gen(rd());
+    uniform_real_distribution<> dis(0.0, 1.0);
+
+    for (int t = 0; t < cfg.trials; t++) {
+        int S = cfg.population * 0.99;
+        int I = cfg.population - S;
+        int R = 0;
+
+        for (int step = 0; step <= cfg.steps; step++) {
+            S_avg[step] += (double)S / cfg.population;
+            I_avg[step] += (double)I / cfg.population;
+            R_avg[step] += (double)R / cfg.population;
+
+            double beta = (step >= cfg.mutation_step) ? cfg.beta_mutation : cfg.beta_base;
+            double inf_prob = 1.0 - pow(1.0 - (beta * I / cfg.population), cfg.contacts);
+
+            int new_i = 0;
+            for (int i = 0; i < S; ++i) if (dis(gen) < inf_prob) new_i++;
+
+            int new_v = 0;
+            if (step >= cfg.vaccine_step) {
+                for (int i = 0; i < (S - new_i); ++i) if (dis(gen) < cfg.vaccine_rate) new_v++;
+            }
+
+            int new_r = 0;
+            for (int i = 0; i < I; ++i) if (dis(gen) < cfg.gamma) new_r++;
+
+            S -= (new_i + new_v);
+            I += (new_i - new_r);
+            R += (new_r + new_v);
+        }
+    }
+
+    for (int i = 0; i <= cfg.steps; i++) {
+        S_avg[i] /= cfg.trials;
+        I_avg[i] /= cfg.trials;
+        R_avg[i] /= cfg.trials;
+    }
+
+    int width = 200, height = 60;
+    vector<vector<char>> canvas(height, vector<char>(width, ' '));
+    vector<int> ys(width), yi(width), yr(width);
+
+    for (int x = 0; x < width; x++) {
+        double pos = (double)x / (width - 1) * cfg.steps;
+        int i = (int)pos;
+        double f = pos - i;
+        auto inter = [&](const vector<double>& v) {
+            return (i + 1 <= cfg.steps) ? v[i] * (1 - f) + v[i + 1] * f : v[i];
+        };
+        ys[x] = height - 1 - (int)(inter(S_avg) * (height - 1));
+        yi[x] = height - 1 - (int)(inter(I_avg) * (height - 1));
+        yr[x] = height - 1 - (int)(inter(R_avg) * (height - 1));
+    }
+
+    for (int x = 1; x < width; x++) {
+        drawLine(canvas, x - 1, ys[x - 1], x, ys[x], 'S');
+        drawLine(canvas, x - 1, yi[x - 1], x, yi[x], 'I');
+        drawLine(canvas, x - 1, yr[x - 1], x, yr[x], 'R');
+    }
+
+    int mx = (int)((double)cfg.mutation_step / cfg.steps * (width - 1));
+    int vx = (int)((double)cfg.vaccine_step / cfg.steps * (width - 1));
+    for (int y = 0; y < height; y++) {
+        if (mx >= 0 && mx < width) canvas[y][mx] = (canvas[y][mx] == ' ') ? 'M' : canvas[y][mx];
+        if (vx >= 0 && vx < width) canvas[y][vx] = (canvas[y][vx] == ' ') ? 'V' : canvas[y][vx];
+    }
+
+    for (int x = 0; x < width; x++) canvas[height - 1][x] = '-';
+    for (int y = 0; y < height; y++) canvas[y][0] = '|';
+
+    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+    renderCanvas(canvas, hConsole);
+
+    cout << "\nS=Blue, I=Red, R=Green, M=Magenta(Mutation), V=Yellow(Vaccine)\n";
+    return 0;
+}

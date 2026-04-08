@@ -1,0 +1,70 @@
+#include <iostream>
+#include <vector>
+#include <complex>
+#include <cmath>
+
+using namespace std;
+
+using cd = complex<double>;
+const double PI = acos(-1);
+
+void fft(vector<cd>& a, bool invert) {
+    int n = a.size();
+    for (int i = 1, j = 0; i < n; i++) {
+        int bit = n >> 1;
+        while (j & bit) {
+            j ^= bit;
+            bit >>= 1;
+        }
+        j |= bit;
+        if (i < j)
+            swap(a[i], a[j]);
+    }
+
+    for (int len = 2; len <= n; len <<= 1) {
+        double angle = 2 * PI / len * (invert ? -1 : 1);
+        cd wlen(cos(angle), sin(angle));
+        for (int i = 0; i < n; i += len) {
+            cd w(1);
+            for (int j = 0; j < len / 2; j++) {
+                cd u = a[i + j];
+                cd v = a[i + j + len / 2] * w;
+                a[i + j] = u + v;
+                a[i + j + len / 2] = u - v;
+                w *= wlen;
+            }
+        }
+    }
+
+    if (invert) {
+        for (cd& x : a)
+            x /= n;
+    }
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    int n;
+    cin >> n;
+
+    int size = 1;
+    while (size < n) size <<= 1;
+
+    vector<cd> a(size);
+    for (int i = 0; i < n; i++) {
+        double x;
+        cin >> x;
+        a[i] = cd(x, 0);
+    }
+
+    fft(a, false);
+
+    cout.precision(10);
+    for (int i = 0; i < size; i++) {
+        cout << fixed << a[i].real() << " " << a[i].imag() << '\n';
+    }
+
+    return 0;
+}

@@ -1,0 +1,46 @@
+#include <iostream>
+#include <cmath>
+#include <array>
+
+using namespace std;
+
+struct State {
+    double x, y, vx, vy;
+};
+
+const double mu = 398600.4418;
+
+State deriv(const State& s) {
+    double r = sqrt(s.x*s.x + s.y*s.y);
+    double ax = -mu * s.x / (r*r*r);
+    double ay = -mu * s.y / (r*r*r);
+    return {s.vx, s.vy, ax, ay};
+}
+
+State add(const State& a, const State& b, double k) {
+    return {a.x + b.x*k, a.y + b.y*k, a.vx + b.vx*k, a.vy + b.vy*k};
+}
+
+State rk4(const State& s, double dt) {
+    State k1 = deriv(s);
+    State k2 = deriv(add(s, k1, dt/2));
+    State k3 = deriv(add(s, k2, dt/2));
+    State k4 = deriv(add(s, k3, dt));
+    
+    State res;
+    res.x = s.x + (k1.x + 2*k2.x + 2*k3.x + k4.x)*dt/6;
+    res.y = s.y + (k1.y + 2*k2.y + 2*k3.y + k4.y)*dt/6;
+    res.vx = s.vx + (k1.vx + 2*k2.vx + 2*k3.vx + k4.vx)*dt/6;
+    res.vy = s.vy + (k1.vy + 2*k2.vy + 2*k3.vy + k4.vy)*dt/6;
+    return res;
+}
+
+int main() {
+    State s = {7000, 0, 0, 7.5};
+    double dt = 10.0;
+
+    for (int i = 0; i < 10000; i++) {
+        s = rk4(s, dt);
+        cout << s.x << " " << s.y << " " << s.vx << " " << s.vy << "\n";
+    }
+}

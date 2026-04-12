@@ -1,0 +1,28 @@
+#include <iostream>
+#include <cmath>
+using namespace std;
+
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(NULL);
+
+    double h, k, a, b, x, y;
+    cin >> h >> k >> a >> b;
+    cin >> x >> y;
+
+    if (a == 0 || b == 0) return 0;
+
+    const double EPS = 1e-9;
+
+    double left = b * b * (x - h) * (x - h) + a * a * (y - k) * (y - k);
+    double right = a * a * b * b;
+
+    if (fabs(left - right) < EPS)
+        cout << "On the ellipse";
+    else if (left < right - EPS)
+        cout << "Inside the ellipse";
+    else
+        cout << "Outside the ellipse";
+
+    return 0;
+}
